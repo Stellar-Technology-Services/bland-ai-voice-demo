@@ -1,0 +1,139 @@
+# AI Phone Call Demo - LLM Context File
+
+## Project Overview
+This is a demonstration application showcasing AI-powered phone calling capabilities using Bland AI for voice interactions and OpenAI for intelligent analysis. The project demonstrates how AI can make real phone calls, conduct natural conversations, and extract structured data from those interactions.
+
+**Live Demo**: https://bland-ai-voice-demo.vercel.app
+**Demo Page**: https://bland-ai-voice-demo.vercel.app/demo
+**Repository**: https://github.com/Stellar-Technology-Services/bland-ai-voice-demo
+
+## Core Functionality
+The application enables users to:
+1. Configure AI phone call parameters (phone number, conversation task, voice selection)
+2. Initiate real phone calls through Bland AI's voice technology
+3. Monitor live transcription of conversations in real-time
+4. Automatically analyze completed calls using OpenAI to extract structured data
+5. Display parsed information in a user-friendly interface
+
+## Technical Architecture
+
+### Frontend Stack
+- **Framework**: SvelteKit with Svelte 5 (using runes for state management)
+- **Styling**: Tailwind CSS v4 with custom design system
+- **Build Tool**: Vite with optimized chunk splitting
+- **Package Manager**: Bun (with npm compatibility)
+- **Deployment**: Vercel with serverless functions
+
+### Backend Services
+- **Voice Calls**: Bland AI API for making actual phone calls
+- **AI Analysis**: OpenAI GPT-4o-mini for transcript analysis and data extraction
+- **Rate Limiting**: Custom in-memory rate limiting optimized for serverless
+- **API Structure**: RESTful endpoints with comprehensive error handling
+
+### Key Components
+```
+src/
+├── lib/
+│   ├── client/
+│   │   ├── components/ (Svelte UI components)
+│   │   └── runes/ (State management with Svelte 5 runes)
+│   ├── server/
+│   │   ├── services/ (Bland AI, OpenAI, call analysis)
+│   │   └── modules/ (Rate limiting, error handling, API utilities)
+│   └── shared/ (Type definitions, schemas)
+├── routes/
+│   ├── api/bland/ (API endpoints for call management)
+│   └── demo/ (Main demo interface)
+└── static/ (Public assets including robots.txt, llms.txt)
+```
+
+## API Endpoints
+- `GET /api/bland/calls` - List all calls with pagination
+- `POST /api/bland/calls` - Create new AI phone call
+- `GET /api/bland/calls/[id]` - Get call details and status
+- `POST /api/bland/calls/[id]?action=stop` - Stop active call
+- `POST /api/bland/calls/[id]/analyze` - Analyze completed call transcript
+- `GET /api/bland/calls/[id]/transcript` - Get formatted call transcript
+- `GET /api/bland/events` - Server-sent events for real-time call updates
+
+## Demo Use Case: Pizza Ordering
+The primary demonstration involves AI calling pizza restaurants to place orders:
+- Orders 5 large pizzas for 12 people (2 pepperoni, 1 margherita, 1 meat lovers, 1 vegetarian)
+- Uses natural conversation patterns with human-like responses and filler words
+- Collects structured data: prices, pickup times, addresses, confirmation numbers
+- Demonstrates real-world application of AI voice technology
+
+## AI Integration Details
+
+### Bland AI Integration
+- Makes actual phone calls to real phone numbers
+- Supports 10+ premium AI voices with different characteristics
+- Configurable parameters: temperature, interruption handling, call duration
+- Real-time transcription and status updates
+- Advanced settings for voice modulation and conversation flow
+
+### OpenAI Integration
+- Model: GPT-4o-mini (gpt-4o-mini) for cost-effectiveness and speed
+- Structured data extraction using Zod schemas for type safety
+- Two analysis modes:
+  1. Pizza order analysis (specialized for food ordering scenarios)
+  2. General call analysis (for any conversation type)
+- JSON mode with schema validation for consistent output
+- Rate limited to 10 requests/minute for cost control
+
+## Security and Production Features
+- Comprehensive rate limiting with different tiers (polling: 50/min, strict: 10/min, critical: 5/5min)
+- Security headers including CSP, HSTS, COOP, COEP
+- Input validation and sanitization for all user inputs
+- Safe error handling that doesn't expose sensitive information
+- Environment variable validation for required API keys
+- CORS configuration for production deployment
+
+## Environment Requirements
+```bash
+BLAND_AI_API_KEY=your_bland_ai_key_here  # Required for voice calls
+OPENAI_API_KEY=your_openai_key_here      # Required for analysis
+```
+
+## Performance Optimizations
+- Serverless-compatible rate limiting with memory management
+- Debounced UI updates and smooth scrolling
+- Optimized build with vendor chunk splitting
+- Cached API responses where appropriate
+- Server-sent events for real-time updates without polling overhead
+
+## Deployment
+- Optimized for Vercel deployment with one-click deploy button
+- Automatic environment variable prompting during deployment
+- Production-ready with comprehensive error handling
+- Supports cold starts and serverless scaling
+
+## Type Safety
+- Full TypeScript implementation with strict type checking
+- Zod schemas for runtime validation
+- Proper interfaces for all data structures (CallDetails, PizzaOrderDetails, etc.)
+- Type-safe API responses and error handling
+
+## Real-time Features
+- Live transcript updates during active calls
+- Status polling every 2.5 seconds for call progress
+- Server-sent events for instant status changes
+- Automatic analysis trigger when calls complete
+
+## Business Applications
+This technology demonstrates practical applications for:
+- Customer service automation
+- Lead qualification calls
+- Appointment scheduling
+- Survey collection
+- Order placement and confirmation
+- Information gathering and verification
+
+## Technical Innovation
+- Combines voice AI with natural language processing
+- Real-time transcription with structured data extraction
+- Serverless architecture optimized for cost and performance
+- Modern web technologies with excellent developer experience
+- Production-ready security and error handling
+
+The project serves as both a functional demonstration and a template for building AI-powered voice applications in production environments. 

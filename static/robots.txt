@@ -1,0 +1,21 @@
+# Robots.txt for Bland AI Voice Demo
+# AI Phone Call Demo - Public showcase application
+
+User-agent: *
+Allow: /
+Allow: /demo
+
+# Disallow API endpoints to reduce server load
+Disallow: /api/
+
+# Allow crawling of static assets
+Allow: /favicon.svg
+Allow: /*.png
+Allow: /*.svg
+Allow: /*.ico
+
+# Standard crawl delay for politeness
+Crawl-delay: 1
+
+# Sitemap (optional - can be added later)
+# Sitemap: https://bland-ai-voice-demo.vercel.app/sitemap.xml 
