@@ -212,7 +212,10 @@ export class DemoRune {
 
 	// Computed properties using $derived
 	canStartCall = $derived(
-		this.phoneNumber.length >= 10 && this.customTask.trim().length > 0 && !this.isCallActive
+		this.phoneNumber.length >= 10 &&
+			this.customTask.trim().length > 0 &&
+			!this.isCallActive &&
+			!this.isLoading
 	);
 
 	statusColor = $derived(() => {
@@ -245,6 +248,12 @@ export class DemoRune {
 	 * Start a new AI phone call with configured settings
 	 */
 	startCall = async (): Promise<void> => {
+		// Prevent multiple simultaneous calls
+		if (this.isLoading || this.isCallActive) {
+			console.warn('Call already in progress, ignoring duplicate request');
+			return;
+		}
+
 		if (!this.phoneNumber) {
 			this.errorMessage = 'Please enter a phone number';
 			return;
@@ -334,24 +343,39 @@ export class DemoRune {
 	stopCall = async (): Promise<void> => {
 		if (!this.currentCall?.call_id) return;
 
-		// Stop polling first to prevent race conditions
+		const callId = this.currentCall.call_id;
+
+		// Clear any existing error messages
+		this.errorMessage = '';
+
+		// Stop polling immediately to prevent race conditions
 		this.stopStatusPolling();
 
+		// Update UI state immediately for instant feedback
+		this.callStatus = 'stopped';
+		this.isCallActive = false;
+		this.isLoading = false;
+
+		console.log(`Stopping call ${callId} - UI updated immediately`);
+
+		// Make API call in background without blocking UI
+		// This ensures the actual call is stopped on the server
 		try {
-			const response = await fetch(`/api/bland/calls/${this.currentCall.call_id}?action=stop`, {
+			const response = await fetch(`/api/bland/calls/${callId}?action=stop`, {
 				method: 'POST'
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to stop call');
+				console.warn(`Failed to stop call ${callId} on server:`, response.status);
+				// Don't revert UI state - user sees call as stopped regardless
+				// Only show error for debugging purposes, not user-facing
+			} else {
+				console.log(`Call ${callId} stopped successfully on server`);
 			}
-
-			// Update status after stopping polling
-			this.callStatus = 'stopped';
-			this.isCallActive = false;
 		} catch (error) {
-			console.error('Failed to stop call:', error);
-			this.errorMessage = error instanceof Error ? error.message : 'Failed to stop call';
+			console.warn(`Network error stopping call ${callId}:`, error);
+			// Don't revert UI state or show error to user
+			// The UI shows the call as stopped, which is what the user wanted
 		}
 	};
 
@@ -367,6 +391,7 @@ export class DemoRune {
 			// Guard against polling after it's been stopped
 			if (!this.statusInterval) return;
 			if (!this.currentCall?.call_id) return;
+			if (!this.isCallActive) return; // Additional guard for stopped calls
 
 			const callId = this.currentCall.call_id; // Store call ID to prevent race conditions
 
@@ -378,12 +403,21 @@ export class DemoRune {
 				if (
 					!this.statusInterval ||
 					!this.currentCall?.call_id ||
-					this.currentCall.call_id !== callId
+					this.currentCall.call_id !== callId ||
+					!this.isCallActive
 				) {
 					return;
 				}
 
 				if (!response.ok) {
+					// Handle different error status codes appropriately
+					if (response.status === 404) {
+						console.warn(`Call ${callId} not found - may have been deleted`);
+						this.stopStatusPolling();
+						this.isCallActive = false;
+						this.callStatus = 'unknown';
+						return;
+					}
 					console.warn('Failed to fetch call details:', response.status);
 					return;
 				}
@@ -394,19 +428,25 @@ export class DemoRune {
 				if (
 					!this.statusInterval ||
 					!this.currentCall?.call_id ||
-					this.currentCall.call_id !== callId
+					this.currentCall.call_id !== callId ||
+					!this.isCallActive
 				) {
 					return;
 				}
 
-				this.callStatus = callDetails.status;
-				console.log(`Call ${callId} status: ${this.callStatus}`);
+				// Only update if status actually changed to avoid unnecessary updates
+				if (this.callStatus !== callDetails.status) {
+					this.callStatus = callDetails.status;
+					console.log(`Call ${callId} status changed to: ${this.callStatus}`);
+				}
 
 				// Update transcript
 				await this.updateTranscript(callDetails);
 
 				// If call is completed, stop polling and analyze
-				if (['completed', 'failed', 'no-answer', 'busy'].includes(callDetails.status)) {
+				if (
+					['completed', 'failed', 'no-answer', 'busy', 'cancelled'].includes(callDetails.status)
+				) {
 					console.log(`Call finished with status: ${callDetails.status}`);
 					this.stopStatusPolling();
 					this.isCallActive = false;
@@ -416,10 +456,11 @@ export class DemoRune {
 					}
 				}
 			} catch (error) {
-				// Only log error if polling is still active
-				if (this.statusInterval && this.currentCall?.call_id === callId) {
+				// Only log error if polling is still active and call hasn't been stopped
+				if (this.statusInterval && this.currentCall?.call_id === callId && this.isCallActive) {
 					console.error('Failed to poll call status:', error);
-					this.errorMessage = 'Failed to get call updates';
+					// Don't set error message for network failures during polling
+					// as they're temporary and could be distracting
 				}
 			}
 		}, 2500); // Poll every 2.5 seconds
@@ -429,19 +470,37 @@ export class DemoRune {
 	 * Update transcript from call details or dedicated endpoint
 	 */
 	private async updateTranscript(callDetails: CallDetails): Promise<void> {
+		// Guard against invalid call details or stopped calls
+		if (!callDetails || !this.currentCall?.call_id || !this.isCallActive) {
+			return;
+		}
+
 		try {
 			// First try to get transcript from our API endpoint
 			if (callDetails.status === 'completed' || callDetails.status === 'in-progress') {
 				try {
 					const transcriptResponse = await fetch(
-						`/api/bland/calls/${this.currentCall!.call_id}/transcript`
+						`/api/bland/calls/${this.currentCall.call_id}/transcript`
 					);
+
+					// Check if call is still active before processing response
+					if (!this.isCallActive || !this.currentCall?.call_id) {
+						return;
+					}
+
 					if (transcriptResponse.ok) {
 						const transcriptData = await transcriptResponse.json();
-						if (transcriptData.transcript && transcriptData.transcript.length > 0) {
-							this.transcript = transcriptData.transcript;
-							console.log(`Updated transcript: ${this.transcript.length} entries`);
-							this.scrollToBottom();
+						if (
+							transcriptData.transcript &&
+							Array.isArray(transcriptData.transcript) &&
+							transcriptData.transcript.length > 0
+						) {
+							// Only update if we have more entries than before to avoid overwriting
+							if (transcriptData.transcript.length >= this.transcript.length) {
+								this.transcript = transcriptData.transcript;
+								console.log(`Updated transcript: ${this.transcript.length} entries`);
+								this.scrollToBottom();
+							}
 							return;
 						}
 					}
@@ -453,7 +512,7 @@ export class DemoRune {
 			// Fallback to using transcript data directly from call details
 			if (callDetails.transcripts && Array.isArray(callDetails.transcripts)) {
 				// Convert Bland AI transcript format to our format with validation
-				this.transcript = callDetails.transcripts
+				const newTranscript = callDetails.transcripts
 					.filter(
 						(entry): entry is BlandTranscriptEntry =>
 							entry &&
@@ -469,24 +528,39 @@ export class DemoRune {
 						})
 					)
 					.filter((entry) => entry.text.trim() !== ''); // Remove empty entries
-				console.log(`Updated transcript from call details: ${this.transcript.length} entries`);
-				this.scrollToBottom();
-			} else if (callDetails.concatenated_transcript) {
-				// Parse concatenated transcript if available
+
+				// Only update if we have new content to avoid unnecessary re-renders
+				if (newTranscript.length >= this.transcript.length) {
+					this.transcript = newTranscript;
+					console.log(`Updated transcript from call details: ${this.transcript.length} entries`);
+					this.scrollToBottom();
+				}
+			} else if (
+				callDetails.concatenated_transcript &&
+				callDetails.concatenated_transcript.trim()
+			) {
+				// Parse concatenated transcript if available and not empty
 				const lines = callDetails.concatenated_transcript
 					.split('\n')
 					.filter((line: string) => line.trim());
-				const parsedTranscript = lines.map((line: string) => {
-					const [user, ...textParts] = line.split(': ');
-					return {
-						user: user || 'unknown',
-						text: textParts.join(': ') || line,
-						timestamp: new Date().toISOString()
-					};
-				});
-				this.transcript = parsedTranscript;
-				console.log(`Parsed concatenated transcript: ${this.transcript.length} entries`);
-				this.scrollToBottom();
+
+				if (lines.length > 0) {
+					const parsedTranscript = lines.map((line: string) => {
+						const [user, ...textParts] = line.split(': ');
+						return {
+							user: user || 'unknown',
+							text: textParts.join(': ') || line,
+							timestamp: new Date().toISOString()
+						};
+					});
+
+					// Only update if we have more content
+					if (parsedTranscript.length >= this.transcript.length) {
+						this.transcript = parsedTranscript;
+						console.log(`Parsed concatenated transcript: ${this.transcript.length} entries`);
+						this.scrollToBottom();
+					}
+				}
 			}
 		} catch (error) {
 			console.error('Failed to update transcript:', error);
@@ -509,6 +583,8 @@ export class DemoRune {
 	private analyzeCall = async (): Promise<void> => {
 		if (!this.currentCall?.call_id) return;
 
+		console.log(`Starting analysis for call ${this.currentCall.call_id}`);
+
 		try {
 			const response = await fetch(`/api/bland/calls/${this.currentCall.call_id}/analyze`, {
 				method: 'POST',
@@ -522,10 +598,19 @@ export class DemoRune {
 
 			if (response.ok) {
 				const analysisResult = await response.json();
-				this.orderDetails = analysisResult.analysis;
+				if (analysisResult.success && analysisResult.analysis) {
+					this.orderDetails = analysisResult.analysis;
+					console.log('Call analysis completed successfully');
+				} else {
+					console.warn('Analysis returned no results:', analysisResult);
+				}
+			} else {
+				console.warn(`Analysis failed with status ${response.status}`);
+				// Don't set error message for analysis failures as they're not critical
 			}
 		} catch (error) {
 			console.error('Failed to analyze call:', error);
+			// Analysis failure is not critical - don't show error to user
 		}
 	};
 
@@ -533,7 +618,7 @@ export class DemoRune {
 	 * Scroll transcript to bottom to show latest messages (debounced for performance)
 	 */
 	private scrollToBottom = (): void => {
-		if (!this.transcriptContainer) return;
+		if (!this.transcriptContainer || !this.isCallActive) return;
 
 		// Clear existing timeout to debounce multiple rapid calls
 		if (this.scrollTimeout) {
@@ -541,13 +626,19 @@ export class DemoRune {
 		}
 
 		this.scrollTimeout = setTimeout(() => {
-			if (this.transcriptContainer) {
+			if (this.transcriptContainer && this.isCallActive) {
 				// Use requestAnimationFrame for smoother scrolling
 				requestAnimationFrame(() => {
-					this.transcriptContainer!.scrollTo({
-						top: this.transcriptContainer!.scrollHeight,
-						behavior: 'smooth'
-					});
+					if (this.transcriptContainer && this.isCallActive) {
+						try {
+							this.transcriptContainer.scrollTo({
+								top: this.transcriptContainer.scrollHeight,
+								behavior: 'smooth'
+							});
+						} catch (error) {
+							console.warn('Failed to scroll transcript:', error);
+						}
+					}
 				});
 			}
 			this.scrollTimeout = null;
@@ -565,6 +656,9 @@ export class DemoRune {
 	 * Reset the demo to initial state
 	 */
 	resetDemo = (): void => {
+		console.log('Resetting demo to initial state');
+
+		// Stop all ongoing operations
 		this.stopStatusPolling();
 
 		// Clear any pending scroll operations
@@ -573,6 +667,7 @@ export class DemoRune {
 			this.scrollTimeout = null;
 		}
 
+		// Reset all state to initial values
 		this.phoneNumber = '';
 		this.advancedSettings = getDefaultAdvancedSettings();
 		this.showAdvancedSettings = false;
@@ -584,6 +679,9 @@ export class DemoRune {
 		this.orderDetails = null;
 		this.errorMessage = '';
 		this.isLoading = false;
+
+		// Clear transcript container reference if it exists
+		this.transcriptContainer = null;
 	};
 
 	/**

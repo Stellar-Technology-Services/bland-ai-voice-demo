@@ -19,13 +19,20 @@
 	let { demo }: { demo: DemoRune } = $props();
 </script>
 
-<Card>
-	<div class="p-6">
-		<h2 class="mb-6 text-xl font-semibold text-slate-900">AI Agent Configuration</h2>
-		<p class="mb-6 text-sm text-slate-600">
-			Set up your AI agent to make a phone call. This demo shows AI ordering pizza, but you can
-			adapt this technology for any conversation type.
-		</p>
+<Card
+	class="h-full border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:shadow-md"
+>
+	<div class="p-6 sm:p-8">
+		<!-- Enhanced Header with Icon -->
+		<div class="mb-6 border-b border-slate-100 pb-4">
+			<div class="mb-2 flex items-center gap-3">
+				<h2 class="text-xl font-bold text-slate-900 sm:text-2xl">AI Agent Configuration</h2>
+			</div>
+			<p class="text-sm leading-relaxed text-slate-600">
+				Set up your AI agent to make a phone call. This demo shows AI ordering pizza, but you can
+				adapt this technology for any conversation type.
+			</p>
+		</div>
 
 		{#if !demo.isCallActive}
 			<div class="space-y-6">
